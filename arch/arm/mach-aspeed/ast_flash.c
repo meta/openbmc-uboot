@@ -27,8 +27,14 @@
 #define AST_FMC_DMA_CTRL_DIR_READ        (0 << 1)
 #define AST_FMC_DMA_CTRL_CLEAR_EN_DIR     ~(0x03)  // Clear DMA direction, enable
 
+/*
+ * The DMA length register is only 25 bits wide, so a single transfer of
+ * 32 MiB or more silently wraps and copies just the remainder.
+ */
+#define AST_FMC_DMA_MAX_CHUNK		(16 << 20)
 
-void aspeed_spi_dma_copy(void * dest, const void *src, size_t count)
+
+static void aspeed_spi_dma_copy_chunk(void *dest, const void *src, size_t count)
 {
 	u32 count_align, poll_time, data;
 
@@ -52,4 +58,16 @@ void aspeed_spi_dma_copy(void * dest, const void *src, size_t count)
 	data = readl(AST_FMC_DMA_CTRL);
 	data &= ~AST_FMC_DMA_CTRL_ENABLE;
 	writel(data, AST_FMC_DMA_CTRL);
+}
+
+void aspeed_spi_dma_copy(void * dest, const void *src, size_t count)
+{
+	while (count > 0) {
+		size_t len = min_t(size_t, count, AST_FMC_DMA_MAX_CHUNK);
+
+		aspeed_spi_dma_copy_chunk(dest, src, len);
+		dest += len;
+		src += len;
+		count -= len;
+	}
 }
